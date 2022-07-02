@@ -1,3 +1,9 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <netinet/in.h>
+#include <sys/wait.h>
+
 #include <iostream>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -7,30 +13,125 @@
 #include <string.h>
 #include <string>
 
+#define TCPPORT 25112
+#define UDPPORT 24112
+#define DOMAIN PF_INET // TODO change domain to AF_INET for Unix
+
 using namespace std;
 
 int main()
 {
-  int welcoming_sock;
+
+  // Stream Sock Server (TCP socket server)
+
   // Create Welcoming Socket
-  // Domain = PF_INET  Type = SOCK_STREAM Protocol = 0
+  int stream_welcoming_sock; // socket id of welcoming socket
+  // Domain = AF_INET  Type = SOCK_STREAM Protocol = 0
   // We let the transport layer decide the protocol based on 'Type'
-  // TODO change domain to AF_INET for Unix
-  if ((welcoming_sock = socket(PF_INET, SOCK_STREAM, 0)) == -1)
+
+  if ((stream_welcoming_sock = socket(DOMAIN, SOCK_STREAM, 0)) == -1)
   {
-    cerr << "Welcoming socket could not be created for ServerA";
+    cerr << "Stream Welcoming socket could not be created for ServerM";
     return -1;
   }
 
-  //Bind the socket
+  // Bind the socket to the IP/Port
+  sockaddr_in stream_hint; // address (IPV4) for welcoming socket
+  stream_hint.sin_family = DOMAIN;
+  stream_hint.sin_port = htons(TCPPORT);               // htons to do host to network translation for port#
+  inet_pton(DOMAIN, "0.0.0.0", &stream_hint.sin_addr); // inet_pton to convert a number in our IP to array of integers
 
-  //Listen and display boot message
+  //if ((bind(stream_welcoming_sock, DOMAIN, &stream_hint, sizeof(stream_hint))) == -1)
+  if ((::bind(stream_welcoming_sock, (const sockaddr *)&stream_hint, sizeof(stream_hint))) == -1)
+  //if ((bind(stream_welcoming_sock, (sockaddr *)&stream_hint, sizeof(stream_hint))) == -1)
+  {
+    cerr << "Stream IP/Port binding could not be done for ServerM";
+    return -2;
+  }
+
+  // Listen and display boot message
+  if (listen(stream_welcoming_sock, SOMAXCONN) == -1)
+  {
+    cerr << "Stream socket could not listen for ServerM";
+    return -3;
+  }
+
+  // Stream socket is listening successfully
+  cout << "The main server is up and running." << endl;
 
   //Accept or create child socket
+  sockaddr_in client;
+  socklen_t clientSize = sizeof(client);
+  char host[NI_MAXHOST]; // buffer to put host name - size 1025
+  char svc[NI_MAXSERV];  // buffer to put service name - size 32
 
-  //Recieve message
+  // pull in a request from incoming request queue and create a child socket to process it
+  int clientSocket = accept(stream_welcoming_sock, (sockaddr *)&client, &clientSize);
 
-  //Send message
+  if (clientSocket == -1)
+  {
+    cerr << "Stream socket could not accept client for ServerM";
+    return -4;
+  }
 
-  //Close child socket
+  // Child socket doesnot need the welcoming socket or listener
+  close(stream_welcoming_sock);
+
+  // Clean up host and svc before populating it
+  memset(host, 0, NI_MAXHOST);
+  memset(svc, 0, NI_MAXSERV);
+
+  // get name of clients computer
+  int result = getnameinfo((sockaddr *)&client,
+                           sizeof(client),
+                           host,
+                           NI_MAXHOST,
+                           svc,
+                           NI_MAXSERV,
+                           0);
+
+  // GETNAMEINFO WAS SUCCESSFUL
+  if (result)
+  {
+    cout << host << " connected on " << svc << endl;
+  }
+  else
+  {
+    // read clients addr and put it in host array
+    // ideally getnameinfo should have done this for us as well as populating the svc
+    // if getnameinfo fails, we have to manully do this ourselves
+    inet_ntop(DOMAIN, &client.sin_addr, host, NI_MAXHOST);              // convert numeric array to string
+    cout << host << " connected on " << ntohs(client.sin_port) << endl; // ntohs is network to host short
+  }
+
+  // TCP connection is opened, so now exchange messages
+  char buf[4096];
+  while (true)
+  {
+    // Clear the buffer
+    memset(buf, 0, 4096);
+
+    // Recieve message
+    int bytesRecv = recv(clientSocket, buf, 4096, 0);
+    if (bytesRecv == -1)
+    {
+      cerr << "Stream child socket could not recieve msg from client on ServerM" << endl;
+      break;
+    }
+
+    if (bytesRecv == 0)
+    {
+      cout << "The client disconnected on ServerM" << endl;
+      break;
+    }
+
+    // Display message that was recieved
+    cout << "Received " << string(buf, 0, bytesRecv) << endl;
+
+    // Send message
+    send(clientSocket, buf, bytesRecv + 1, 0);
+  }
+
+  // Close child socket
+  close(clientSocket);
 }
