@@ -16,6 +16,8 @@
 #define TCPPORT 25112
 #define UDPPORT 24112
 #define DOMAIN PF_INET // TODO change domain to AF_INET for Unix
+#define MAXBUFLEN 4096
+#define IPADDR "127.0.0.1"
 
 using namespace std;
 
@@ -38,14 +40,14 @@ int main()
   // Bind the socket to the IP/Port
   sockaddr_in stream_hint; // address (IPV4) for welcoming socket
   stream_hint.sin_family = DOMAIN;
-  stream_hint.sin_port = htons(TCPPORT);               // htons to do host to network translation for port#
-  inet_pton(DOMAIN, "0.0.0.0", &stream_hint.sin_addr); // inet_pton to convert a number in our IP to array of integers
+  stream_hint.sin_port = htons(TCPPORT);            // htons to do host to network translation for port#
+  inet_pton(DOMAIN, IPADDR, &stream_hint.sin_addr); // inet_pton to convert a number in our IP to array of integers
 
   //if ((bind(stream_welcoming_sock, DOMAIN, &stream_hint, sizeof(stream_hint))) == -1)
   if ((::bind(stream_welcoming_sock, (const sockaddr *)&stream_hint, sizeof(stream_hint))) == -1)
   //if ((bind(stream_welcoming_sock, (sockaddr *)&stream_hint, sizeof(stream_hint))) == -1)
   {
-    cerr << "Stream IP/Port binding could not be done for ServerM";
+    cerr << "Stream Socket IP/Port binding could not be done for ServerM";
     return -2;
   }
 
@@ -111,14 +113,14 @@ int main()
       }
 
       // TCP connection is opened, so now exchange messages
-      char buf[4096];
+      char buf[MAXBUFLEN];
       while (true)
       {
         // Clear the buffer
-        memset(buf, 0, 4096);
+        memset(buf, 0, MAXBUFLEN);
 
         // Recieve message
-        int bytesRecv = recv(childSocket, buf, 4096, 0);
+        int bytesRecv = recv(childSocket, buf, MAXBUFLEN - 1, 0);
         if (bytesRecv == -1)
         {
           cerr << "Stream child socket could not recieve msg from client on ServerM" << endl;
