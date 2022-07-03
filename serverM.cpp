@@ -69,9 +69,9 @@ int main()
 
     // Accept or create child socket
     // pull in a request from incoming request queue and create a child socket to process it
-    int clientSocket = accept(stream_welcoming_sock, (sockaddr *)&client, &clientSize);
+    int childSocket = accept(stream_welcoming_sock, (sockaddr *)&client, &clientSize);
 
-    if (clientSocket == -1)
+    if (childSocket == -1)
     {
       cerr << "Stream socket could not accept client for ServerM";
       continue;
@@ -118,7 +118,7 @@ int main()
         memset(buf, 0, 4096);
 
         // Recieve message
-        int bytesRecv = recv(clientSocket, buf, 4096, 0);
+        int bytesRecv = recv(childSocket, buf, 4096, 0);
         if (bytesRecv == -1)
         {
           cerr << "Stream child socket could not recieve msg from client on ServerM" << endl;
@@ -135,15 +135,22 @@ int main()
         cout << "Received " << string(buf, 0, bytesRecv) << endl;
 
         // Send message
-        if (send(clientSocket, buf, bytesRecv + 1, 0) == -1)
+        if (send(childSocket, buf, bytesRecv + 1, 0) == -1)
         {
           cerr << "Error sending message from ServerM to " << host << " who was requesting for service " << svc << endl;
           break;
         }
       }
+      // Close child socket
+      close(childSocket);
+      exit(0);
     }
 
-    // Close child socket
-    close(clientSocket);
+    // Close child socket as parent does not need it
+    close(childSocket);
   }
+
+  // Close welcoming socket
+  close(stream_welcoming_sock);
+  return 0;
 }
