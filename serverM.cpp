@@ -339,6 +339,7 @@ string checkWallet(string name, bool createNewSocket, int datagram_client_sock, 
     int d;
     try
     {
+      datagramServerResponse = decode(datagramServerResponse);
       d = stoi(datagramServerResponse);
       int bal = 1000 + d;
       datagramServerResponse = "The current balance of \"" + name + "\" is :  " + to_string(bal) + " txcoins.";
@@ -428,6 +429,7 @@ string logTransaction(string sender, string reciever, string amt)
     int d;
     try
     {
+      checkWalletSenderResponse = decode(checkWalletSenderResponse);
       d = stoi(checkWalletSenderResponse);
       int bal = 1000 + d;
       if (bal < amount)
