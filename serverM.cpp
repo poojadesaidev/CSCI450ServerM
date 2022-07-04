@@ -445,92 +445,234 @@ string logTransaction(string sender, string reciever, string amt)
 
   string datagramServerResponse;
 
-  // Check if exists Sender, if so return wallet
-  string checkWalletSenderResponse = checkWalletQueryServer(1, sender, datagram_client_sock, datagram_client_hint);
+  bool senderExists = false;
+  bool recieverExists = false;
+  int bal = 1000;
 
+  // Check if exists Sender, if so return wallet
+  // Send request to Server A and recieve response
+  string datagramServerResponseA = checkWalletQueryServer(1, sender, datagram_client_sock, datagram_client_hint);
   // process UDP response
-  if (checkWalletSenderResponse.empty() ||
-      checkWalletSenderResponse.compare("empty") == 0 ||
-      checkWalletSenderResponse.compare("invalid") == 0)
+  if (!(datagramServerResponseA.empty() ||
+        datagramServerResponseA.compare("empty") == 0 ||
+        datagramServerResponseA.compare("invalid") == 0))
   {
-    datagramServerResponse = "Unable to proceed with the transaction as \"" + sender + "\" is not part of the network.";
-    // Check if exists Reciever exists
-    string checkWalletRecResponse = checkWalletQueryServer(1, reciever, datagram_client_sock, datagram_client_hint);
-    if (checkWalletRecResponse.empty() ||
-        checkWalletRecResponse.compare("empty") == 0 ||
-        checkWalletRecResponse.compare("invalid") == 0)
-    {
-      datagramServerResponse = "Unable to proceed with the transaction as \"" + sender + "\" and \"" + reciever + "\" are not part of the network.";
-    }
-    return datagramServerResponse;
-  }
-  else
-  {
-    // Check if exists Reciever exists
-    string checkWalletRecResponse = checkWalletQueryServer(1, reciever, datagram_client_sock, datagram_client_hint);
-    if (checkWalletRecResponse.empty() ||
-        checkWalletRecResponse.compare("empty") == 0 ||
-        checkWalletRecResponse.compare("invalid") == 0)
-    {
-      datagramServerResponse = "Unable to proceed with the transaction as \"" + reciever + "\" is not part of the network.";
-      return datagramServerResponse;
-    }
     int d;
     try
     {
-      checkWalletSenderResponse = decode(checkWalletSenderResponse);
-      d = stoi(checkWalletSenderResponse);
-      int bal = 1000 + d;
-      if (bal < amount)
-      {
-        datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of insufficient balance.\n\n";
-
-        // check bal
-        datagramServerResponse = datagramServerResponse + checkWallet(sender, false, datagram_client_sock, datagram_client_hint);
-
-        return datagramServerResponse;
-      }
+      datagramServerResponseA = decode(datagramServerResponseA);
+      d = stoi(datagramServerResponseA);
+      bal = bal + d;
+      senderExists = true;
     }
     catch (...)
     {
-      datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of insufficient balance.\n\n";
-
-      // check bal
-      datagramServerResponse = datagramServerResponse + checkWallet(sender, false, datagram_client_sock, datagram_client_hint);
-
-      return datagramServerResponse;
     }
+  }
+
+  // Check if exists Sender, if so return wallet
+  // Send request to Server B and recieve response
+  string datagramServerResponseB = checkWalletQueryServer(2, sender, datagram_client_sock, datagram_client_hint);
+  // process UDP response
+  if (!(datagramServerResponseB.empty() ||
+        datagramServerResponseB.compare("empty") == 0 ||
+        datagramServerResponseB.compare("invalid") == 0))
+  {
+    int d;
+    try
+    {
+      datagramServerResponseB = decode(datagramServerResponseB);
+      d = stoi(datagramServerResponseB);
+      bal = bal + d;
+      senderExists = true;
+    }
+    catch (...)
+    {
+    }
+  }
+
+  // Check if exists Sender, if so return wallet
+  // Send request to Server C and recieve response
+  string datagramServerResponseC = checkWalletQueryServer(3, sender, datagram_client_sock, datagram_client_hint);
+  // process UDP response
+  if (!(datagramServerResponseC.empty() ||
+        datagramServerResponseC.compare("empty") == 0 ||
+        datagramServerResponseC.compare("invalid") == 0))
+  {
+    int d;
+    try
+    {
+      datagramServerResponseC = decode(datagramServerResponseC);
+      d = stoi(datagramServerResponseC);
+      bal = bal + d;
+      senderExists = true;
+    }
+    catch (...)
+    {
+    }
+  }
+
+  // Check if exists Receiver
+  // Send request to Server A and recieve response
+  string datagramServerResponseAR = checkWalletQueryServer(1, sender, datagram_client_sock, datagram_client_hint);
+  // process UDP response
+  if (!(datagramServerResponseAR.empty() ||
+        datagramServerResponseAR.compare("empty") == 0 ||
+        datagramServerResponseAR.compare("invalid") == 0))
+  {
+    recieverExists = true;
+  }
+
+  if (!recieverExists)
+  {
+    // Check if exists Receiver
+    // Send request to Server B and recieve response
+    string datagramServerResponseBR = checkWalletQueryServer(2, sender, datagram_client_sock, datagram_client_hint);
+    // process UDP response
+    if (!(datagramServerResponseBR.empty() ||
+          datagramServerResponseBR.compare("empty") == 0 ||
+          datagramServerResponseBR.compare("invalid") == 0))
+    {
+      recieverExists = true;
+    }
+  }
+
+  if (!recieverExists)
+  {
+    // Check if exists Receiver
+    // Send request to Server B and recieve response
+    string datagramServerResponseCR = checkWalletQueryServer(3, sender, datagram_client_sock, datagram_client_hint);
+    // process UDP response
+    if (!(datagramServerResponseCR.empty() ||
+          datagramServerResponseCR.compare("empty") == 0 ||
+          datagramServerResponseCR.compare("invalid") == 0))
+    {
+      recieverExists = true;
+    }
+  }
+
+  if (!senderExists && !recieverExists)
+  {
+    datagramServerResponse = "Unable to proceed with the transaction as \"" + sender + "\" and \"" + reciever + "\" are not part of the network.";
+    return datagramServerResponse;
+  }
+  else if (!senderExists)
+  {
+    datagramServerResponse = "Unable to proceed with the transaction as \"" + sender + "\" is not part of the network.";
+    return datagramServerResponse;
+  }
+  else if (!recieverExists)
+  {
+    datagramServerResponse = "Unable to proceed with the transaction as \"" + reciever + "\" is not part of the network.";
+    return datagramServerResponse;
+  }
+
+  // Check if exists Reciever exists
+  string checkWalletRecResponse = checkWalletQueryServer(1, reciever, datagram_client_sock, datagram_client_hint);
+  if (checkWalletRecResponse.empty() ||
+      checkWalletRecResponse.compare("empty") == 0 ||
+      checkWalletRecResponse.compare("invalid") == 0)
+  {
+    datagramServerResponse = "Unable to proceed with the transaction as \"" + reciever + "\" is not part of the network.";
+    return datagramServerResponse;
+  }
+
+  if (bal < amount)
+  {
+    datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of insufficient balance.\n\n";
+
+    // check bal
+    datagramServerResponse = datagramServerResponse + checkWallet(sender, false, datagram_client_sock, datagram_client_hint);
+
+    return datagramServerResponse;
   }
 
   // sender and reciever exists and wallet has sufficient balance
 
   // get next transaction number
   int maxTrasNum = -1;
-  string maxTran = checkMaxTransNumQueryServer(1, datagram_client_sock, datagram_client_hint);
-  if (maxTran.empty() ||
-      maxTran.compare("empty") == 0 ||
-      maxTran.compare("invalid") == 0)
+
+  // get max trans from ServerA
+  int maxTrasNumA = -1;
+  string maxTranA = checkMaxTransNumQueryServer(1, datagram_client_sock, datagram_client_hint);
+  if (maxTranA.empty() ||
+      maxTranA.compare("empty") == 0 ||
+      maxTranA.compare("invalid") == 0)
   {
     datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of error trying to log transaction.";
     return datagramServerResponse;
   }
   try
   {
-    maxTrasNum = stoi(maxTran);
+    maxTrasNumA = stoi(maxTranA);
   }
   catch (...)
   {
     datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of error trying to log transaction.";
     return datagramServerResponse;
   }
+
+  // get max trans from ServerB
+  int maxTrasNumB = -1;
+  string maxTranB = checkMaxTransNumQueryServer(2, datagram_client_sock, datagram_client_hint);
+  if (maxTranB.empty() ||
+      maxTranB.compare("empty") == 0 ||
+      maxTranB.compare("invalid") == 0)
+  {
+    datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of error trying to log transaction.";
+    return datagramServerResponse;
+  }
+  try
+  {
+    maxTrasNumB = stoi(maxTranB);
+  }
+  catch (...)
+  {
+    datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of error trying to log transaction.";
+    return datagramServerResponse;
+  }
+
+  // get max trans from ServerC
+  int maxTrasNumC = -1;
+  string maxTranC = checkMaxTransNumQueryServer(3, datagram_client_sock, datagram_client_hint);
+  if (maxTranC.empty() ||
+      maxTranC.compare("empty") == 0 ||
+      maxTranC.compare("invalid") == 0)
+  {
+    datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of error trying to log transaction.";
+    return datagramServerResponse;
+  }
+  try
+  {
+    maxTrasNumC = stoi(maxTranC);
+  }
+  catch (...)
+  {
+    datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of error trying to log transaction.";
+    return datagramServerResponse;
+  }
+
+  if (maxTrasNum < maxTrasNumA)
+  {
+    maxTrasNum = maxTrasNumA;
+  }
+  if (maxTrasNum < maxTrasNumB)
+  {
+    maxTrasNum = maxTrasNumB;
+  }
+
+  if (maxTrasNum < maxTrasNumC)
+  {
+    maxTrasNum = maxTrasNumC;
+  }
   maxTrasNum = maxTrasNum + 1;
 
-  // randomly select a server TODO
-  // srand((unsigned)time(0));
-  // randomNumber = rand();
-  // int randomServName = (randomNumber % 3) + 1;
-  int randomServName = 1;
+  // Randomly select a server
+  srand((unsigned)time(0));
+  int randomNumber = rand();
+  int randomServName = (randomNumber % 3) + 1;
 
+  cout << "RANDOM " << randomServName << endl;
   // log transaction in file
   datagramServerResponse = logTransInFileQueryServer(randomServName, datagram_client_sock, datagram_client_hint,
                                                      to_string(maxTrasNum), sender, reciever, amt);
