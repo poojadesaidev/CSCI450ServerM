@@ -262,25 +262,11 @@ string sendRequestToDatagramServer(int datagram_client_sock,
   return string(buf, 0, bytesRecv);
 }
 
-string checkWalletQueryServer(int serverName, string name)
+string checkWalletQueryServer(int serverName, string name, int datagram_client_sock, sockaddr_in datagram_client_hint)
 {
-  // Create UDP socket
-  int datagram_client_sock = createUDPSocket();
 
   // create addressHint for server
   sockaddr_in datagram_server_hint = createUDPServerAddrHint(serverName);
-
-  // create addressHint for serverM for bind operation
-  sockaddr_in datagram_client_hint = createUDPClientAddrHint();
-
-  // bind UDP client to a static port
-  if (::bind(datagram_client_sock, (struct sockaddr *)&datagram_client_hint, sizeof(datagram_client_hint)) == -1)
-  {
-    cerr << "UDP client serverM could bind to port "
-         << UDPPORT
-         << endl;
-    return "invalid";
-  }
 
   string req = "check " + encode(name);
 
@@ -288,11 +274,32 @@ string checkWalletQueryServer(int serverName, string name)
   return sendRequestToDatagramServer(datagram_client_sock, datagram_server_hint, datagram_client_hint, req, serverName);
 }
 
-string checkWallet(string name)
+string checkWallet(string name, bool createNewSocket, int datagram_client_sock, sockaddr_in datagram_client_hint)
 {
+  if (createNewSocket == true)
+  {
+    // create Datagram Client and bind to port
+
+    // create UDP socket
+    datagram_client_sock = createUDPSocket();
+
+    // create addressHint for serverM for bind operation
+    datagram_client_hint = createUDPClientAddrHint();
+
+    // bind UDP client to a static port
+    if (::bind(datagram_client_sock, (struct sockaddr *)&datagram_client_hint, sizeof(datagram_client_hint)) == -1)
+    {
+      cerr << "UDP client serverM could bind to port "
+           << UDPPORT
+           << endl;
+      // Close Socket
+      close(datagram_client_sock);
+      return "invalid";
+    }
+  }
 
   // Send request to Server A and recieve response
-  string datagramServerResponse = checkWalletQueryServer(1, name);
+  string datagramServerResponse = checkWalletQueryServer(1, name, datagram_client_sock, datagram_client_hint);
 
   // process UDP response
   if (datagramServerResponse.empty() ||
@@ -308,13 +315,121 @@ string checkWallet(string name)
     {
       d = stoi(datagramServerResponse);
       int bal = 1000 + d;
-      datagramServerResponse = "The current balance of \"" + name + " is :  " + to_string(bal) + " txcoins.";
+      datagramServerResponse = "The current balance of \"" + name + "\" is :  " + to_string(bal) + " txcoins.";
     }
     catch (...)
     {
       datagramServerResponse = "Unable to proceed with the transaction as \"" + name + "\" is not part of the network.";
     }
   }
+  if (createNewSocket == true)
+  {
+    // Close Socket
+    close(datagram_client_sock);
+  }
+  return datagramServerResponse;
+}
+
+string logTransaction(string sender, string reciever, string amt)
+{
+
+  if (amt.empty())
+  {
+    return "invalid";
+  }
+
+  int amount;
+  try
+  {
+    amount = stoi(amt);
+  }
+  catch (...)
+  {
+    return "invalid";
+  }
+
+  // create Datagram Client and bind to port
+
+  // create UDP socket
+  int datagram_client_sock = createUDPSocket();
+
+  // create addressHint for serverM for bind operation
+  sockaddr_in datagram_client_hint = createUDPClientAddrHint();
+
+  // bind UDP client to a static port
+  if (::bind(datagram_client_sock, (struct sockaddr *)&datagram_client_hint, sizeof(datagram_client_hint)) == -1)
+  {
+    cerr << "UDP client serverM could bind to port "
+         << UDPPORT
+         << endl;
+    // Close Socket
+    close(datagram_client_sock);
+    return "invalid";
+  }
+
+  string datagramServerResponse;
+
+  // Check if exists Sender, if so return wallet
+  string checkWalletSenderResponse = checkWalletQueryServer(1, sender, datagram_client_sock, datagram_client_hint);
+
+  // process UDP response
+  if (checkWalletSenderResponse.empty() ||
+      checkWalletSenderResponse.compare("empty") == 0 ||
+      checkWalletSenderResponse.compare("invalid") == 0)
+  {
+    datagramServerResponse = "Unable to proceed with the transaction as \"" + sender + "\" is not part of the network.";
+    // Check if exists Reciever exists
+    string checkWalletRecResponse = checkWalletQueryServer(1, reciever, datagram_client_sock, datagram_client_hint);
+    if (checkWalletSenderResponse.empty() ||
+        checkWalletSenderResponse.compare("empty") == 0 ||
+        checkWalletSenderResponse.compare("invalid") == 0)
+    {
+      datagramServerResponse = "Unable to proceed with the transaction as \"" + sender + "\" and \"" + reciever + "\" are not part of the network.";
+    }
+    return datagramServerResponse;
+  }
+  else
+  {
+    // Check if exists Reciever exists
+    string checkWalletRecResponse = checkWalletQueryServer(1, reciever, datagram_client_sock, datagram_client_hint);
+    if (checkWalletRecResponse.empty() ||
+        checkWalletRecResponse.compare("empty") == 0 ||
+        checkWalletRecResponse.compare("invalid") == 0)
+    {
+      datagramServerResponse = "Unable to proceed with the transaction as \"" + reciever + "\" is not part of the network.";
+      return datagramServerResponse;
+    }
+    int d;
+    try
+    {
+      d = stoi(checkWalletSenderResponse);
+      int bal = 1000 + d;
+      if (bal < amount)
+      {
+        datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of insufficient balance.\n\n";
+
+        // check bal
+        datagramServerResponse = datagramServerResponse + checkWallet(sender, false, datagram_client_sock, datagram_client_hint);
+
+        return datagramServerResponse;
+      }
+    }
+    catch (...)
+    {
+      datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of insufficient balance.\n\n";
+
+      // check bal
+      datagramServerResponse = datagramServerResponse + checkWallet(sender, false, datagram_client_sock, datagram_client_hint);
+
+      return datagramServerResponse;
+    }
+  }
+
+  // sender and reciever exists and wallet has sufficient balance
+  datagramServerResponse = "TODO";
+
+  // Close Socket
+  close(datagram_client_sock);
   return datagramServerResponse;
 }
 
@@ -380,7 +495,8 @@ int childFork(int stream_welcoming_sock, int childSocket, sockaddr_in client)
          << " using TCP over port "
          << TCPPORT << "." << endl;
 
-    datagramServerResponse = checkWallet(clientInputs[0]);
+    sockaddr_in datagram_client_hint_temp;
+    datagramServerResponse = checkWallet(clientInputs[0], true, 0, datagram_client_hint_temp);
     cout << "The main server sent the current balance to the client." << endl;
   }
   else if (clientInputs.size() == 3)
@@ -393,7 +509,7 @@ int childFork(int stream_welcoming_sock, int childSocket, sockaddr_in client)
          << " to transfer " << clientInputs[2] << " coins to \"" << clientInputs[1] << "\""
          << " using TCP over port "
          << TCPPORT << "." << endl;
-    datagramServerResponse = "TODO";
+    datagramServerResponse = logTransaction(clientInputs[0], clientInputs[1], clientInputs[2]);
   }
   else
   {
