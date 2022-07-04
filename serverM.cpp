@@ -12,19 +12,108 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <string>
+#include <sstream>
+#include <vector>
+#include <cstring>
+#include <ctype.h>
 
 #define TCPPORT 25112
 #define UDPPORT 24112
 #define DOMAIN PF_INET // TODO change domain to AF_INET for Unix
 #define MAXBUFLEN 4096
 #define IPADDR "127.0.0.1"
+#define UDPPORTSERVERA 21112
+#define UDPPORTSERVERB 22112
+#define UDPPORTSERVERC 23112
 
 using namespace std;
 
-int main()
+string encode(string originalString)
 {
 
-  // Stream Sock Server (TCP socket server)
+  int n = originalString.length();
+
+  // declaring character array
+  char original_char_array[n + 1];
+  char encoded_char_array[n];
+
+  // copying the contents of the
+  // string to char array
+  strcpy(original_char_array, originalString.c_str());
+
+  for (int i = 0; i < n + 1; i++)
+  {
+    char c = original_char_array[i];
+    if (isdigit(c))
+    {
+      c = c + 3;
+      if (c > 57)
+      {
+        c = c - 10;
+      }
+    }
+    else if (isalpha(c))
+    {
+      c = c + 3;
+
+      if ((c > 90 && c < 97) || c > 122)
+      {
+        c = c - 26;
+      }
+    }
+    encoded_char_array[i] = c;
+  }
+
+  string s = encoded_char_array;
+  return s;
+  // cout << s << s.length() << endl;
+}
+
+string decode(string encodedString)
+{
+
+  int n = encodedString.length();
+
+  // declaring character array
+  char original_char_array[n + 1];
+  char encoded_char_array[n + 1];
+
+  // copying the contents of the
+  // string to char array
+  strcpy(encoded_char_array, encodedString.c_str());
+
+  for (int i = 0; i < n + 1; i++)
+  {
+    char c = encoded_char_array[i];
+    //cout << encoded_char_array[i] << endl;
+    if (isdigit(c))
+    {
+      c = c - 3;
+      if (c < 48)
+      {
+        c = c + 10;
+      }
+    }
+    else if (isalpha(c))
+    {
+      c = c - 3;
+
+      if ((c < 97 && c > 90) || c < 65)
+      {
+        c = c + 26;
+      }
+    }
+    original_char_array[i] = c;
+  }
+
+  string s = original_char_array;
+
+  return s;
+  // cout << s << s.length() << endl;
+}
+
+int createBindListenStrmSrvrWlcmngSocket()
+{
 
   // Create Welcoming Socket
   int stream_welcoming_sock; // socket id of welcoming socket
@@ -48,14 +137,302 @@ int main()
   //if ((bind(stream_welcoming_sock, (sockaddr *)&stream_hint, sizeof(stream_hint))) == -1)
   {
     cerr << "Stream Socket IP/Port binding could not be done for ServerM";
-    return -2;
+    return -1;
   }
 
   // Listen and display boot message
   if (listen(stream_welcoming_sock, SOMAXCONN) == -1)
   {
     cerr << "Stream socket could not listen for ServerM";
-    return -3;
+    return -1;
+  }
+  return stream_welcoming_sock;
+}
+
+int createUDPSocket()
+{
+  // create datagram client socket
+  return socket(DOMAIN, SOCK_DGRAM, 0);
+}
+
+sockaddr_in createUDPServerAddrHint(int serverNumber)
+{
+  // create a hint structure for the server
+  sockaddr_in datagram_server_hint;
+  memset(&datagram_server_hint, 0, sizeof(datagram_server_hint));
+  datagram_server_hint.sin_family = DOMAIN;
+  inet_pton(DOMAIN, IPADDR, &datagram_server_hint.sin_addr); // all three servers are on localhost
+  switch (serverNumber)
+  {
+  case 1:
+    datagram_server_hint.sin_port = htons(UDPPORTSERVERA);
+    return datagram_server_hint;
+  case 2:
+    datagram_server_hint.sin_port = htons(UDPPORTSERVERB);
+    return datagram_server_hint;
+  case 3:
+    datagram_server_hint.sin_port = htons(UDPPORTSERVERC);
+    return datagram_server_hint;
+  }
+  return datagram_server_hint;
+}
+
+sockaddr_in createUDPClientAddrHint()
+{
+  // create a hint structure for the server
+  sockaddr_in datagram_client_hint;
+  memset(&datagram_client_hint, 0, sizeof(datagram_client_hint));
+  datagram_client_hint.sin_family = DOMAIN;
+  inet_pton(DOMAIN, IPADDR, &datagram_client_hint.sin_addr); // IP for UDP client is local host
+  datagram_client_hint.sin_port = htons(UDPPORT);
+
+  return datagram_client_hint;
+}
+
+string sendRequestToDatagramServer(int datagram_client_sock,
+                                   sockaddr_in datagram_server_hint,
+                                   sockaddr_in datagram_client_hint,
+                                   string req, int serverName)
+{
+  string serverTrsName;
+  switch (serverName)
+  {
+  case 1:
+    serverTrsName = "A";
+    break;
+  case 2:
+    serverTrsName = "B";
+    break;
+  case 3:
+    serverTrsName = "C";
+    break;
+  default:
+    serverTrsName = "A";
+    break;
+  }
+  socklen_t datagram_server_hint_len = sizeof(datagram_server_hint);
+
+  // send data
+  int sendData = sendto(datagram_client_sock,
+                        req.c_str(),
+                        req.size() + 1,
+                        0,
+                        (sockaddr *)&datagram_server_hint, datagram_server_hint_len);
+
+  if (sendData == -1)
+  {
+    cerr << "UDP client serverM could not send to UDP server "
+         << IPADDR
+         << " on port "
+         << ntohs(datagram_server_hint.sin_port)
+         << " Please try again." << endl;
+    return "invalid";
+  }
+
+  cout << "The main server sent a request to server " << serverTrsName << endl;
+
+  char buf[MAXBUFLEN];
+  // Clear the buffer and client
+  memset(buf, 0, MAXBUFLEN);
+  // Recieve message
+  int bytesRecv = recvfrom(datagram_client_sock, buf, MAXBUFLEN - 1, 0, (sockaddr *)&datagram_server_hint, &datagram_server_hint_len);
+  if (bytesRecv == -1)
+  {
+    cerr << "UDP client serverM could not recieve msg from UDP server "
+         << IPADDR
+         << " on port "
+         << ntohs(datagram_server_hint.sin_port)
+         << " Please try again." << endl;
+    return "invalid";
+  }
+
+  if (bytesRecv == 0)
+  {
+    cerr << "UDP client serverM recieved empty msg from UDP server "
+         << IPADDR
+         << " on port "
+         << ntohs(datagram_server_hint.sin_port)
+         << " Please try again." << endl;
+    return "invalid";
+  }
+
+  cout << "The main server received transactions from Server " << serverTrsName << " using UDP over port " << ntohs(datagram_client_hint.sin_port) << "." << endl;
+
+  // return response that was recieved
+  return string(buf, 0, bytesRecv);
+}
+
+string checkWalletQueryServer(int serverName, string name)
+{
+  // Create UDP socket
+  int datagram_client_sock = createUDPSocket();
+
+  // create addressHint for server
+  sockaddr_in datagram_server_hint = createUDPServerAddrHint(serverName);
+
+  // create addressHint for serverM for bind operation
+  sockaddr_in datagram_client_hint = createUDPClientAddrHint();
+
+  // bind UDP client to a static port
+  if (::bind(datagram_client_sock, (struct sockaddr *)&datagram_client_hint, sizeof(datagram_client_hint)) == -1)
+  {
+    cerr << "UDP client serverM could bind to port "
+         << UDPPORT
+         << endl;
+    return "invalid";
+  }
+
+  string req = "check " + encode(name);
+
+  // Send request to backend Server and recieve response
+  return sendRequestToDatagramServer(datagram_client_sock, datagram_server_hint, datagram_client_hint, req, serverName);
+}
+
+string checkWallet(string name)
+{
+
+  // Send request to Server A and recieve response
+  string datagramServerResponse = checkWalletQueryServer(1, name);
+
+  // process UDP response
+  if (datagramServerResponse.empty() ||
+      datagramServerResponse.compare("empty") == 0 ||
+      datagramServerResponse.compare("invalid") == 0)
+  {
+    datagramServerResponse = "Unable to proceed with the transaction as \"" + name + "\" is not part of the network.";
+  }
+  else
+  {
+    int d;
+    try
+    {
+      d = stoi(datagramServerResponse);
+      int bal = 1000 + d;
+      datagramServerResponse = "The current balance of \"" + name + " is :  " + to_string(bal) + " txcoins.";
+    }
+    catch (...)
+    {
+      datagramServerResponse = "Unable to proceed with the transaction as \"" + name + "\" is not part of the network.";
+    }
+  }
+  return datagramServerResponse;
+}
+
+int childFork(int stream_welcoming_sock, int childSocket, sockaddr_in client)
+{
+  // this is a child process
+  // Child socket doesnot need the welcoming socket or listener
+  close(stream_welcoming_sock);
+
+  char host[NI_MAXHOST]; // buffer to put client ip - size 1025
+  //char svc[NI_MAXSERV];  // buffer to put client port - size 32
+  string clientIP;
+  string clientPort;
+
+  // Clean up host and svc before populating it
+  memset(host, 0, NI_MAXHOST);
+  //memset(svc, 0, NI_MAXSERV);
+
+  // get client's IP and port
+  inet_ntop(DOMAIN, &client.sin_addr, host, NI_MAXHOST); // convert numeric array to string
+  clientPort = to_string(ntohs(client.sin_port));        // ntohs is network to host short
+  clientIP = host;
+  // cout << clientIP << " connected on " << clientPort << endl;
+
+  // TCP connection is opened, so now exchange messages
+  char buf[MAXBUFLEN]; // Buffer to hold the incoming request
+
+  memset(buf, 0, MAXBUFLEN); // Clear the buffer
+
+  // Recieve Request
+  int bytesRecv = recv(childSocket, buf, MAXBUFLEN - 1, 0);
+  if (bytesRecv == -1)
+  {
+    cerr << "ServerM : Error recieving message from client " << host << " with host port " << clientPort << endl;
+    return -1;
+  }
+
+  if (bytesRecv == 0)
+  {
+    cout << "The client disconnected on ServerM" << endl;
+    return -1;
+  }
+
+  // Process the input request
+  istringstream stringStream(string(buf, 0, bytesRecv));
+  vector<string> clientInputs;
+  string word;
+  string datagramServerResponse;
+  int er_flag = 0;
+
+  while (stringStream >> word)
+  {
+    clientInputs.push_back(word);
+  }
+
+  if (clientInputs.size() == 1)
+  {
+    // Check Wallet requested
+
+    // Display request that was recieved
+    cout << "The main server received "
+         << "input=\"" + clientInputs[0] + "\" from the client"
+         << " using TCP over port "
+         << TCPPORT << "." << endl;
+
+    datagramServerResponse = checkWallet(clientInputs[0]);
+    cout << "The main server sent the current balance to the client." << endl;
+  }
+  else if (clientInputs.size() == 3)
+  {
+    // Transfer Amount requested
+
+    // Display request that was recieved
+    cout << "The main server received "
+         << "from \"" << clientInputs[0] << "\""
+         << " to transfer " << clientInputs[2] << " coins to \"" << clientInputs[1] << "\""
+         << " using TCP over port "
+         << TCPPORT << "." << endl;
+    datagramServerResponse = "TODO";
+  }
+  else
+  {
+    // Not a supported request
+    cerr << "ServerM : not a supported request by " << host << " with host port " << clientPort << endl;
+    datagramServerResponse = "Not a supported Operation!";
+    er_flag = -1;
+  }
+
+  if (datagramServerResponse.empty())
+  {
+    datagramServerResponse = "Something went wrong";
+    er_flag = -1;
+  }
+
+  int n = datagramServerResponse.length();
+  char char_array[n + 1];
+  strcpy(char_array, datagramServerResponse.c_str());
+
+  // Send response
+  if (send(childSocket, char_array, n + 1, 0) == -1)
+  {
+    cerr << "ServerM : Error sending message from ServerM to " << host << " with host port " << clientPort << endl;
+    er_flag = -1;
+  }
+
+  // Close child socket
+  close(childSocket);
+  return er_flag;
+}
+
+int main()
+{
+  // Stream Sock Server (TCP socket server)
+  int stream_welcoming_sock = createBindListenStrmSrvrWlcmngSocket();
+
+  if (stream_welcoming_sock == -1)
+  {
+    return -1;
   }
 
   // Stream socket is listening successfully
@@ -66,8 +443,6 @@ int main()
   {
     sockaddr_in client;
     socklen_t clientSize = sizeof(client);
-    char host[NI_MAXHOST]; // buffer to put host name - size 1025
-    char svc[NI_MAXSERV];  // buffer to put service name - size 32
 
     // Accept or create child socket
     // pull in a request from incoming request queue and create a child socket to process it
@@ -77,74 +452,11 @@ int main()
     {
       cerr << "Stream socket could not accept client for ServerM";
       continue;
-      //return -4;
     }
 
     if (!fork())
-    { // this is a child process
-      // Child socket doesnot need the welcoming socket or listener
-      close(stream_welcoming_sock);
-
-      // Clean up host and svc before populating it
-      memset(host, 0, NI_MAXHOST);
-      memset(svc, 0, NI_MAXSERV);
-
-      // get name of clients computer
-      int result = getnameinfo((sockaddr *)&client,
-                               sizeof(client),
-                               host,
-                               NI_MAXHOST,
-                               svc,
-                               NI_MAXSERV,
-                               0);
-
-      // GETNAMEINFO WAS SUCCESSFUL
-      if (result)
-      {
-        cout << host << " connected on " << svc << endl;
-      }
-      else
-      {
-        // read clients addr and put it in host array
-        // ideally getnameinfo should have done this for us as well as populating the svc
-        // if getnameinfo fails, we have to manully do this ourselves
-        inet_ntop(DOMAIN, &client.sin_addr, host, NI_MAXHOST);              // convert numeric array to string
-        cout << host << " connected on " << ntohs(client.sin_port) << endl; // ntohs is network to host short
-      }
-
-      // TCP connection is opened, so now exchange messages
-      char buf[MAXBUFLEN];
-      while (true)
-      {
-        // Clear the buffer
-        memset(buf, 0, MAXBUFLEN);
-
-        // Recieve message
-        int bytesRecv = recv(childSocket, buf, MAXBUFLEN - 1, 0);
-        if (bytesRecv == -1)
-        {
-          cerr << "Stream child socket could not recieve msg from client on ServerM" << endl;
-          break;
-        }
-
-        if (bytesRecv == 0)
-        {
-          cout << "The client disconnected on ServerM" << endl;
-          break;
-        }
-
-        // Display message that was recieved
-        cout << "Received " << string(buf, 0, bytesRecv) << endl;
-
-        // Send message
-        if (send(childSocket, buf, bytesRecv + 1, 0) == -1)
-        {
-          cerr << "Error sending message from ServerM to " << host << " who was requesting for service " << svc << endl;
-          break;
-        }
-      }
-      // Close child socket
-      close(childSocket);
+    {
+      childFork(stream_welcoming_sock, childSocket, client);
       exit(0);
     }
 
