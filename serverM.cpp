@@ -16,6 +16,7 @@
 #include <vector>
 #include <cstring>
 #include <ctype.h>
+#include <cstdlib>
 
 #define TCPPORT 25112
 #define UDPPORT 24112
@@ -262,6 +263,31 @@ string sendRequestToDatagramServer(int datagram_client_sock,
   return string(buf, 0, bytesRecv);
 }
 
+string logTransInFileQueryServer(int serverName, int datagram_client_sock, sockaddr_in datagram_client_hint,
+                                 string transactionNum, string sender, string rec, string amt)
+{
+
+  // create addressHint for server
+  sockaddr_in datagram_server_hint = createUDPServerAddrHint(serverName);
+
+  string req = "log " + transactionNum + " " + encode(sender) + " " + encode(rec) + " " + encode(amt);
+
+  // Send request to backend Server and recieve response
+  return sendRequestToDatagramServer(datagram_client_sock, datagram_server_hint, datagram_client_hint, req, serverName);
+}
+
+string checkMaxTransNumQueryServer(int serverName, int datagram_client_sock, sockaddr_in datagram_client_hint)
+{
+
+  // create addressHint for server
+  sockaddr_in datagram_server_hint = createUDPServerAddrHint(serverName);
+
+  string req = "serialnum";
+
+  // Send request to backend Server and recieve response
+  return sendRequestToDatagramServer(datagram_client_sock, datagram_server_hint, datagram_client_hint, req, serverName);
+}
+
 string checkWalletQueryServer(int serverName, string name, int datagram_client_sock, sockaddr_in datagram_client_hint)
 {
 
@@ -380,9 +406,9 @@ string logTransaction(string sender, string reciever, string amt)
     datagramServerResponse = "Unable to proceed with the transaction as \"" + sender + "\" is not part of the network.";
     // Check if exists Reciever exists
     string checkWalletRecResponse = checkWalletQueryServer(1, reciever, datagram_client_sock, datagram_client_hint);
-    if (checkWalletSenderResponse.empty() ||
-        checkWalletSenderResponse.compare("empty") == 0 ||
-        checkWalletSenderResponse.compare("invalid") == 0)
+    if (checkWalletRecResponse.empty() ||
+        checkWalletRecResponse.compare("empty") == 0 ||
+        checkWalletRecResponse.compare("invalid") == 0)
     {
       datagramServerResponse = "Unable to proceed with the transaction as \"" + sender + "\" and \"" + reciever + "\" are not part of the network.";
     }
@@ -426,7 +452,49 @@ string logTransaction(string sender, string reciever, string amt)
   }
 
   // sender and reciever exists and wallet has sufficient balance
-  datagramServerResponse = "TODO";
+
+  // get next transaction number
+  int maxTrasNum = -1;
+  string maxTran = checkMaxTransNumQueryServer(1, datagram_client_sock, datagram_client_hint);
+  if (maxTran.empty() ||
+      maxTran.compare("empty") == 0 ||
+      maxTran.compare("invalid") == 0)
+  {
+    datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of error trying to log transaction.";
+    return datagramServerResponse;
+  }
+  try
+  {
+    maxTrasNum = stoi(maxTran);
+  }
+  catch (...)
+  {
+    datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of error trying to log transaction.";
+    return datagramServerResponse;
+  }
+  maxTrasNum = maxTrasNum + 1;
+
+  // randomly select a server TODO
+  // srand((unsigned)time(0));
+  // randomNumber = rand();
+  // int randomServName = (randomNumber % 3) + 1;
+  int randomServName = 1;
+
+  // log transaction in file
+  datagramServerResponse = logTransInFileQueryServer(randomServName, datagram_client_sock, datagram_client_hint,
+                                                     to_string(maxTrasNum), sender, reciever, amt);
+  if (datagramServerResponse.empty() ||
+      datagramServerResponse.compare("empty") == 0 ||
+      datagramServerResponse.compare("invalid") == 0)
+  {
+    datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of error trying to log transaction.";
+    return datagramServerResponse;
+  }
+
+  datagramServerResponse = "\"" + sender + "\" successfully transferred " + amt + " txcoins to \"" + reciever + "\".\n\n";
+
+  // check bal
+  datagramServerResponse = datagramServerResponse + checkWallet(sender, false, datagram_client_sock, datagram_client_hint);
 
   // Close Socket
   close(datagram_client_sock);
