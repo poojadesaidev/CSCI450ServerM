@@ -324,31 +324,80 @@ string checkWallet(string name, bool createNewSocket, int datagram_client_sock, 
     }
   }
 
-  // Send request to Server A and recieve response
-  string datagramServerResponse = checkWalletQueryServer(1, name, datagram_client_sock, datagram_client_hint);
+  bool userPresent = false;
+  int bal = 1000;
 
+  // Send request to Server A and recieve response
+  string datagramServerResponseA = checkWalletQueryServer(1, name, datagram_client_sock, datagram_client_hint);
   // process UDP response
-  if (datagramServerResponse.empty() ||
-      datagramServerResponse.compare("empty") == 0 ||
-      datagramServerResponse.compare("invalid") == 0)
+  if (!(datagramServerResponseA.empty() ||
+        datagramServerResponseA.compare("empty") == 0 ||
+        datagramServerResponseA.compare("invalid") == 0))
+  {
+    int d;
+    try
+    {
+      datagramServerResponseA = decode(datagramServerResponseA);
+      d = stoi(datagramServerResponseA);
+      bal = bal + d;
+      userPresent = true;
+    }
+    catch (...)
+    {
+    }
+  }
+
+  // Send request to Server B and recieve response
+  string datagramServerResponseB = checkWalletQueryServer(2, name, datagram_client_sock, datagram_client_hint);
+  // process UDP response
+  if (!(datagramServerResponseB.empty() ||
+        datagramServerResponseB.compare("empty") == 0 ||
+        datagramServerResponseB.compare("invalid") == 0))
+  {
+    int d;
+    try
+    {
+      datagramServerResponseB = decode(datagramServerResponseB);
+      d = stoi(datagramServerResponseB);
+      bal = bal + d;
+      userPresent = true;
+    }
+    catch (...)
+    {
+    }
+  }
+
+  // Send request to Server C and recieve response
+  string datagramServerResponseC = checkWalletQueryServer(3, name, datagram_client_sock, datagram_client_hint);
+  // process UDP response
+  if (!(datagramServerResponseC.empty() ||
+        datagramServerResponseC.compare("empty") == 0 ||
+        datagramServerResponseC.compare("invalid") == 0))
+  {
+    int d;
+    try
+    {
+      datagramServerResponseC = decode(datagramServerResponseC);
+      d = stoi(datagramServerResponseC);
+      bal = bal + d;
+      userPresent = true;
+    }
+    catch (...)
+    {
+    }
+  }
+
+  string datagramServerResponse;
+  // process UDP response
+  if (!userPresent)
   {
     datagramServerResponse = "Unable to proceed with the transaction as \"" + name + "\" is not part of the network.";
   }
   else
   {
-    int d;
-    try
-    {
-      datagramServerResponse = decode(datagramServerResponse);
-      d = stoi(datagramServerResponse);
-      int bal = 1000 + d;
-      datagramServerResponse = "The current balance of \"" + name + "\" is :  " + to_string(bal) + " txcoins.";
-    }
-    catch (...)
-    {
-      datagramServerResponse = "Unable to proceed with the transaction as \"" + name + "\" is not part of the network.";
-    }
+    datagramServerResponse = "The current balance of \"" + name + "\" is :  " + to_string(bal) + " txcoins.";
   }
+
   if (createNewSocket == true)
   {
     // Close Socket
