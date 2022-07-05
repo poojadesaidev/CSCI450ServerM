@@ -35,12 +35,12 @@ using namespace std;
 // create class for creating a sorted list of structs for TXLIST
 struct Transaction
 {
-  string id;
+  int id;
   string sender;
   string rec;
   string amount;
   Transaction() {}
-  Transaction(string iid, string isender, string irec, string iamount)
+  Transaction(int iid, string isender, string irec, string iamount)
   {
     id = iid;
     sender = isender;
@@ -146,7 +146,7 @@ int writeToFile(list<Transaction> allTransactions)
   for (Transaction &t : allTransactions)
   {
     string text = "";
-    text = text + t.id + " " + decode(t.sender) + " " + decode(t.rec) + " " + decode(t.amount);
+    text = text + to_string(t.id) + " " + decode(t.sender) + " " + decode(t.rec) + " " + decode(t.amount);
     txChainFile << text << endl;
   }
 
@@ -271,7 +271,7 @@ string sendRequestToDatagramServer(int datagram_client_sock,
     return "invalid";
   }
 
-  cout << "The main server sent a request to server " << serverTrsName << endl;
+  cout << "The main server sent a request to server " << serverTrsName << "." << endl;
 
   char buf[MAXBUFLEN];
   // Clear the buffer and client
@@ -448,7 +448,7 @@ string checkWallet(string name, bool createNewSocket, int datagram_client_sock, 
   }
   else
   {
-    datagramServerResponse = "The current balance of \"" + name + "\" is :  " + to_string(bal) + " txcoins.";
+    datagramServerResponse = "The current balance of \"" + name + "\" is : " + to_string(bal) + " txcoins.";
   }
 
   if (createNewSocket == true)
@@ -475,6 +475,11 @@ string logTransaction(string sender, string reciever, string amt)
   catch (...)
   {
     return "invalid";
+  }
+
+  if (amount <= 0)
+  {
+    return "Unable to proceed with the transaction as \"" + sender + "\" tried to transfer non positive amount to \"" + reciever + "\".";
   }
 
   // create Datagram Client and bind to port
@@ -567,7 +572,7 @@ string logTransaction(string sender, string reciever, string amt)
 
   // Check if exists Receiver
   // Send request to Server A and recieve response
-  string datagramServerResponseAR = checkWalletQueryServer(1, sender, datagram_client_sock, datagram_client_hint);
+  string datagramServerResponseAR = checkWalletQueryServer(1, reciever, datagram_client_sock, datagram_client_hint);
   // process UDP response
   if (!(datagramServerResponseAR.empty() ||
         datagramServerResponseAR.compare("empty") == 0 ||
@@ -580,7 +585,7 @@ string logTransaction(string sender, string reciever, string amt)
   {
     // Check if exists Receiver
     // Send request to Server B and recieve response
-    string datagramServerResponseBR = checkWalletQueryServer(2, sender, datagram_client_sock, datagram_client_hint);
+    string datagramServerResponseBR = checkWalletQueryServer(2, reciever, datagram_client_sock, datagram_client_hint);
     // process UDP response
     if (!(datagramServerResponseBR.empty() ||
           datagramServerResponseBR.compare("empty") == 0 ||
@@ -593,8 +598,8 @@ string logTransaction(string sender, string reciever, string amt)
   if (!recieverExists)
   {
     // Check if exists Receiver
-    // Send request to Server B and recieve response
-    string datagramServerResponseCR = checkWalletQueryServer(3, sender, datagram_client_sock, datagram_client_hint);
+    // Send request to Server C and recieve response
+    string datagramServerResponseCR = checkWalletQueryServer(3, reciever, datagram_client_sock, datagram_client_hint);
     // process UDP response
     if (!(datagramServerResponseCR.empty() ||
           datagramServerResponseCR.compare("empty") == 0 ||
@@ -620,16 +625,7 @@ string logTransaction(string sender, string reciever, string amt)
     return datagramServerResponse;
   }
 
-  // Check if exists Reciever exists
-  string checkWalletRecResponse = checkWalletQueryServer(1, reciever, datagram_client_sock, datagram_client_hint);
-  if (checkWalletRecResponse.empty() ||
-      checkWalletRecResponse.compare("empty") == 0 ||
-      checkWalletRecResponse.compare("invalid") == 0)
-  {
-    datagramServerResponse = "Unable to proceed with the transaction as \"" + reciever + "\" is not part of the network.";
-    return datagramServerResponse;
-  }
-
+  // Check if sender has sufficient balance
   if (bal < amount)
   {
     datagramServerResponse = "\"" + sender + "\" was unable to transfer " + amt + " txcoins to \"" + reciever + "\" because of insufficient balance.\n\n";
@@ -725,7 +721,6 @@ string logTransaction(string sender, string reciever, string amt)
   int randomNumber = rand();
   int randomServName = (randomNumber % 3) + 1;
 
-  cout << "RANDOM " << randomServName << endl;
   // log transaction in file
   datagramServerResponse = logTransInFileQueryServer(randomServName, datagram_client_sock, datagram_client_hint,
                                                      to_string(maxTrasNum), sender, reciever, amt);
@@ -920,8 +915,8 @@ int childFork(int stream_welcoming_sock, int childSocket, sockaddr_in client)
            << TCPPORT << "." << endl;
       sockaddr_in datagram_client_hint_temp;
       datagramServerResponse = getTransactionList();
-      // TODO no message mentioned
-      cout << "The main server generated the transaction list file." << endl;
+      // no message mentioned
+      //cout << "The main server generated the transaction list file." << endl;
     }
     else
     {
