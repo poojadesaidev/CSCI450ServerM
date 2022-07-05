@@ -17,6 +17,8 @@
 #include <cstring>
 #include <ctype.h>
 #include <cstdlib>
+#include <list>
+#include <fstream>
 
 #define TCPPORT 25112
 #define UDPPORT 24112
@@ -26,8 +28,32 @@
 #define UDPPORTSERVERA 21112
 #define UDPPORTSERVERB 22112
 #define UDPPORTSERVERC 23112
+#define TXCHAINFILE "txchain.txt"
 
 using namespace std;
+
+// create class for creating a sorted list of structs for TXLIST
+struct Transaction
+{
+  string id;
+  string sender;
+  string rec;
+  string amount;
+  Transaction() {}
+  Transaction(string iid, string isender, string irec, string iamount)
+  {
+    id = iid;
+    sender = isender;
+    rec = irec;
+    amount = iamount;
+  }
+
+  // overload the < operator which will be used by the sort method of list
+  bool operator<(const Transaction &transObj) const
+  {
+    return id < transObj.id;
+  }
+};
 
 string encode(string originalString)
 {
@@ -111,6 +137,21 @@ string decode(string encodedString)
 
   return s;
   // cout << s << s.length() << endl;
+}
+
+int writeToFile(list<Transaction> allTransactions)
+{
+  ofstream txChainFile(TXCHAINFILE);
+
+  for (Transaction &t : allTransactions)
+  {
+    string text = "";
+    text = text + t.id + " " + decode(t.sender) + " " + decode(t.rec) + " " + decode(t.amount);
+    txChainFile << text << endl;
+  }
+
+  txChainFile.close();
+  return 0;
 }
 
 int createBindListenStrmSrvrWlcmngSocket()
@@ -261,6 +302,18 @@ string sendRequestToDatagramServer(int datagram_client_sock,
 
   // return response that was recieved
   return string(buf, 0, bytesRecv);
+}
+
+string getTransactionListQueryServer(int serverName, int datagram_client_sock, sockaddr_in datagram_client_hint)
+{
+
+  // create addressHint for server
+  sockaddr_in datagram_server_hint = createUDPServerAddrHint(serverName);
+
+  string req = "list";
+
+  // Send request to backend Server and recieve response
+  return sendRequestToDatagramServer(datagram_client_sock, datagram_server_hint, datagram_client_hint, req, serverName);
 }
 
 string logTransInFileQueryServer(int serverName, int datagram_client_sock, sockaddr_in datagram_client_hint,
@@ -694,6 +747,116 @@ string logTransaction(string sender, string reciever, string amt)
   return datagramServerResponse;
 }
 
+string getTransactionList()
+{
+
+  // create Datagram Client and bind to port
+
+  // create UDP socket
+  int datagram_client_sock = createUDPSocket();
+
+  // create addressHint for serverM for bind operation
+  sockaddr_in datagram_client_hint = createUDPClientAddrHint();
+
+  // bind UDP client to a static port
+  if (::bind(datagram_client_sock, (struct sockaddr *)&datagram_client_hint, sizeof(datagram_client_hint)) == -1)
+  {
+    cerr << "UDP client serverM could bind to port "
+         << UDPPORT
+         << endl;
+    // Close Socket
+    close(datagram_client_sock);
+    return "invalid";
+  }
+
+  list<Transaction> listTransactions;
+
+  // Send request to Server A and recieve all transactions
+  string datagramServerResponseA = getTransactionListQueryServer(1, datagram_client_sock, datagram_client_hint);
+
+  // process UDP response
+  if (!(datagramServerResponseA.empty() ||
+        datagramServerResponseA.compare("empty") == 0 ||
+        datagramServerResponseA.compare("invalid") == 0))
+  {
+    stringstream strStream(datagramServerResponseA);
+    string lineStr;
+    while (getline(strStream, lineStr))
+    {
+      stringstream lineStream(lineStr);
+      Transaction t = Transaction();
+      lineStream >> t.id;
+      lineStream >> t.sender;
+      lineStream >> t.rec;
+      lineStream >> t.amount;
+      listTransactions.push_back(t);
+    }
+  }
+
+  // Send request to Server B and recieve all transactions
+  string datagramServerResponseB = getTransactionListQueryServer(2, datagram_client_sock, datagram_client_hint);
+
+  // process UDP response
+  if (!(datagramServerResponseB.empty() ||
+        datagramServerResponseB.compare("empty") == 0 ||
+        datagramServerResponseB.compare("invalid") == 0))
+  {
+    stringstream strStream(datagramServerResponseB);
+    string lineStr;
+    while (getline(strStream, lineStr))
+    {
+      stringstream lineStream(lineStr);
+      Transaction t = Transaction();
+      lineStream >> t.id;
+      lineStream >> t.sender;
+      lineStream >> t.rec;
+      lineStream >> t.amount;
+      listTransactions.push_back(t);
+    }
+  }
+
+  // Send request to Server C and recieve all transactions
+  string datagramServerResponseC = getTransactionListQueryServer(3, datagram_client_sock, datagram_client_hint);
+
+  // process UDP response
+  if (!(datagramServerResponseC.empty() ||
+        datagramServerResponseC.compare("empty") == 0 ||
+        datagramServerResponseC.compare("invalid") == 0))
+  {
+    stringstream strStream(datagramServerResponseC);
+    string lineStr;
+    while (getline(strStream, lineStr))
+    {
+      stringstream lineStream(lineStr);
+      Transaction t = Transaction();
+      lineStream >> t.id;
+      lineStream >> t.sender;
+      lineStream >> t.rec;
+      lineStream >> t.amount;
+      listTransactions.push_back(t);
+    }
+  }
+
+  close(datagram_client_sock);
+
+  // sort
+  listTransactions.sort();
+
+  if (!listTransactions.empty())
+  {
+    if (writeToFile(listTransactions) == 0)
+    {
+      return "Successfully received a sorted list of transactions from the main server.";
+    }
+    else
+    {
+      return "Something went wrong : did not receive a sorted list of transactions from the main server.";
+    }
+  }
+
+  return "Something went wrong : did not receive a sorted list of transactions from the main server.";
+}
+
 int childFork(int stream_welcoming_sock, int childSocket, sockaddr_in client)
 {
   // this is a child process
@@ -748,17 +911,32 @@ int childFork(int stream_welcoming_sock, int childSocket, sockaddr_in client)
 
   if (clientInputs.size() == 1)
   {
-    // Check Wallet requested
+    if (clientInputs[0].compare("TXLIST") == 0)
+    {
+      // List Transactions
 
-    // Display request that was recieved
-    cout << "The main server received "
-         << "input=\"" + clientInputs[0] + "\" from the client"
-         << " using TCP over port "
-         << TCPPORT << "." << endl;
+      // Display request that was recieved
+      cout << "The main server received a sorted list request from the monitor using TCP over port "
+           << TCPPORT << "." << endl;
+      sockaddr_in datagram_client_hint_temp;
+      datagramServerResponse = getTransactionList();
+      // TODO no message mentioned
+      cout << "The main server generated the transaction list file." << endl;
+    }
+    else
+    {
+      // Check Wallet requested
 
-    sockaddr_in datagram_client_hint_temp;
-    datagramServerResponse = checkWallet(clientInputs[0], true, 0, datagram_client_hint_temp);
-    cout << "The main server sent the current balance to the client." << endl;
+      // Display request that was recieved
+      cout << "The main server received "
+           << "input=\"" + clientInputs[0] + "\" from the client"
+           << " using TCP over port "
+           << TCPPORT << "." << endl;
+
+      sockaddr_in datagram_client_hint_temp;
+      datagramServerResponse = checkWallet(clientInputs[0], true, 0, datagram_client_hint_temp);
+      cout << "The main server sent the current balance to the client." << endl;
+    }
   }
   else if (clientInputs.size() == 3)
   {
@@ -771,6 +949,7 @@ int childFork(int stream_welcoming_sock, int childSocket, sockaddr_in client)
          << " using TCP over port "
          << TCPPORT << "." << endl;
     datagramServerResponse = logTransaction(clientInputs[0], clientInputs[1], clientInputs[2]);
+    cout << "The main server sent the result of the transaction to the client." << endl;
   }
   else
   {
